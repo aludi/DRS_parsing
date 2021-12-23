@@ -15,6 +15,16 @@ def read_data():
     return data
 
 
+def read_drs_data():
+    '''Reads in the data from the DRS-clause structure dev file
+    and returns it as a list.'''
+    with open('../PMB/data/pmb-4.0.0/gold/dev.txt') as file:
+        data = file.read()
+        data = data.split('\n\n')
+        data.pop(-1)
+    return data
+
+
 def extract_features(data):
     '''Extracts specific features from the data, such as tokens and possibly other
     things. Extracting extra features can be done by adding them in the loops.'''
@@ -80,15 +90,48 @@ def lookup_wn(pos_tags):
 
     return wn_annotations
 
-def download_nltk_packages():   # only for first time running if they're not installed
+
+def download_nltk_packages():
+    ''' Downloads the nltk packages necessary for this project'''
     nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('wordnet', quiet=True)
     nltk.download('omw-1.4', quiet=True)
 
 
+def read_all_data():
+    ''' Read the tagged sentences and the drs's into the project'''
+    data = read_data()
+    drs_data = read_drs_data()
+    return data, drs_data
+
+
+def extract_drs_features(data):
+    structured_data = []
+    for item in data:
+        lines = item.split('\n')
+        lines = lines[2:-1]          # remove preamble
+        temp = [[], [], [], [], [], []]
+        for line in lines:
+            line = line.split(' ')
+            if "%" in line[0]:       # useless phrase 'also', "ah!"
+                continue             # skip
+            temp[0].append(line[0])  # The first argument of a clause is always a variable for a DRS.
+            temp[1].append(line[1])  # The second argument determines the type of the clause.
+            temp[2].append(line[2])  # The third and fourth argument are always variables
+            if line[3] != '':        # or constants (constants are enclosed in double quotes).
+                temp[3].append(line[3])
+            temp[4].append(line[-2])  # add words
+            temp[5].append(line[-1])  # and index in sentence for bookkeeping
+        structured_data.append(temp)
+
+    return structured_data
+
+
+
 def main():
     download_nltk_packages()
-    data = read_data()
+    data, drs_data = read_all_data()
+    drs = extract_drs_features(drs_data)
     tokens, roles = extract_features(data)
     pos_tags = pos_tag(tokens)
     wn_annotations = lookup_wn(pos_tags)
