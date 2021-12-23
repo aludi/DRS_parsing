@@ -36,6 +36,7 @@ def extract_features(data):
 def pos_tag(tokens):
     '''Conducts part-of-speech tagging on the extracted tokens from
     the data using NLTK.'''
+
     pos_tags = []
     for sentence in tokens:
         pos_tags.append(nltk.pos_tag(sentence))
@@ -79,8 +80,14 @@ def lookup_wn(pos_tags):
 
     return wn_annotations
 
+def download_nltk_packages():   # only for first time running if they're not installed
+    nltk.download('averaged_perceptron_tagger', quiet=True)
+    nltk.download('wordnet', quiet=True)
+    nltk.download('omw-1.4', quiet=True)
+
 
 def main():
+    download_nltk_packages()
     data = read_data()
     tokens, roles = extract_features(data)
     pos_tags = pos_tag(tokens)
