@@ -3,6 +3,7 @@
 
 import nltk
 from nltk.corpus import wordnet as wn
+from nltk.corpus.reader import Synset
 
 
 def read_data():
@@ -49,7 +50,6 @@ def extract_features(data):
 def pos_tag(tokens):
     """ Conducts part-of-speech tagging on the extracted tokens from
     the data using NLTK."""
-
     pos_tags = []
     for sentence in tokens:
         pos_tags.append(nltk.pos_tag(sentence))
@@ -90,7 +90,6 @@ def lookup_wn(pos_tags):
                     wn_annotations.append((word[0], ''))
             else:
                 wn_annotations.append((word[0], ''))
-
     return wn_annotations
 
 
@@ -115,8 +114,9 @@ def extract_drs_features(data):
     for item in data:
         lines = item.split('\n')
         lines = lines[2:-1]          # remove preamble
+        sentence = lines[0].strip("%")
         temp = [[], [], [], [], [], []]
-        full_drs = []
+        full_drs = [sentence]
         for line in lines:
             clause = []
             line = line.split(' ')
@@ -151,19 +151,38 @@ def baseline_drs_wn(data):
     Current system baseline: 34% correct.
     """
     total_count = 0
-    correct_count = 0
+    correct_base_count = 0
+    correct_pos_count = 0
+
     for drs in data:
-        for clause in drs:
+        clauses_drs = drs[1:]
+        tagged = pos_tag([drs[0].split(" ")])
+        for clause in clauses_drs:
+            relevant_tag = 0
+            for item in tagged[0]:
+                word, tag = item
+                if clause[-2] == word:  # match drs word with pos tag
+                    relevant_tag = tag
+
             if clause[1].islower(): # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
+
+                [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]])
+                ### pos tag baseline
+                if type(baseline_guess) == Synset:
+                    baseline_guess = baseline_guess.name()  # always take the first one for baseline
+                    if clause_name == baseline_guess:
+                        correct_pos_count += 1
+                ### non-pos tag baseline
                 list_of_possible_meanings = wn.synsets(clause[1])
                 if len(list_of_possible_meanings) > 0:
                     baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
                     if clause_name == baseline_guess:
-                        correct_count += 1
+                        correct_base_count += 1
 
-    print(f"baseline correctness on drs: {(correct_count/total_count)*100}")
+    print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
+    print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
 
 
 
@@ -174,9 +193,9 @@ def main():
     data, drs_data = read_all_data()
     drs, claused_drs = extract_drs_features(drs_data)
     baseline_drs_wn(claused_drs)
-    tokens, roles = extract_features(data)
-    pos_tags = pos_tag(tokens)
-    wn_annotations = lookup_wn(pos_tags)
+    #tokens, roles = extract_features(data)
+    #pos_tags = pos_tag(tokens)
+    #wn_annotations = lookup_wn(pos_tags)
 
 
 if __name__ == "__main__":
