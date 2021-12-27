@@ -159,27 +159,31 @@ def baseline_drs_wn(data):
         tagged = pos_tag([drs[0].split(" ")])
         for clause in clauses_drs:
             relevant_tag = 0
+            relevant_word = 0
             for item in tagged[0]:
                 word, tag = item
                 if clause[-2] == word:  # match drs word with pos tag
                     relevant_tag = tag
+                    relevant_word = word
 
             if clause[1].islower(): # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
-
                 [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]])
+
                 ### pos tag baseline
                 if type(baseline_guess) == Synset:
-                    baseline_guess = baseline_guess.name()  # always take the first one for baseline
-                    if clause_name == baseline_guess:
+                    baseline_pos_guess = baseline_guess.name()  # always take the first one for baseline
+                    if clause_name == baseline_pos_guess:
                         correct_pos_count += 1
+
                 ### non-pos tag baseline
                 list_of_possible_meanings = wn.synsets(clause[1])
                 if len(list_of_possible_meanings) > 0:
                     baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
                     if clause_name == baseline_guess:
                         correct_base_count += 1
+
 
     print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
     print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
