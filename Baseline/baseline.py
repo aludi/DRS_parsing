@@ -5,8 +5,9 @@ import nltk
 from nltk.corpus import wordnet as wn
 from nltk.corpus.reader import Synset
 from nltk.corpus.reader.wordnet import WordNetError
-
+from collections import defaultdict
 import numpy as np
+from itertools import permutations
 
 
 def read_data():
@@ -182,8 +183,8 @@ def baseline_drs_wn(data):
 
                 [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
                 print(word)
-                #print(word, baseline_guess)
-                #print("\t", len(baseline_guess))
+                print(word, baseline_guess)
+                print("\t", len(baseline_guess))
                 ### pos tag baseline
                 if len((baseline_guess)) > 0:
                     baseline_pos_guess = baseline_guess[0].name()  # always take the first one for baseline
@@ -208,6 +209,8 @@ def baseline_drs_wn(data):
 
     print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
     print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
+
+
 
 def determining_the_gold_similarity_distance(data):
 
@@ -243,9 +246,11 @@ def determining_the_gold_similarity_distance(data):
         clauses_drs = drs[1:]
         relevant_synsets = []
         for clause in clauses_drs:  # this part gets the synset from the relevant words
+
             if clause[1].islower():  # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
+
                 try:
                     relevant_synsets.append(wn.synset(str(clause_name)))
                 except WordNetError: # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
@@ -270,7 +275,150 @@ def determining_the_gold_similarity_distance(data):
 
 
 
+def test_similarity_matrix(data):
+    '''
 
+    for now, on the first fifty drs' (otherwise its too slow):
+    - 0th step, get the gold tags for  the drs and put them aside
+
+    - for every word in the drs, look for its collection of synsets (that fit with its pos-tag sometimes)
+    - this results in a list [w1, w2, ..., wn], where n = number of words with synsets in the drs, and w1 = collection of synsets for word 1, etc.
+    - find the relevant similarity comparisons - we only need to compare the upper triangle (as in def determining_gold...)
+         - for a drs with 3 wordnet-words, we only need similarity W1/W2, W1/W3 and W2/W3
+    - then, we do matrix multiplication to get all relevant similarities:
+        - if w1 = [p1, p2... pm] synsets, and w2 = [q1, q2, ..., qm] synsets, then we do w1Xw2 with similarity (so w1.similarity(w2) for all x in w1 and y in w2
+        - we do this for all pair-wise sets (so for a drs with 3 words,  w1/w2, w1/w3 and w2/w3, where w1 etc. are now vectors instead of scalars.
+    - so now we have similarity scores for all possible combinations in the sentence.
+    - Now, we assume a given meaning (and assign w1 = p1, w2 = q1, etc.), and collect and sum the similarity scores for this sentence complex
+    - Then we divide by the number of words for normalization
+    - We do this for every combination of assigned meanings, and so we get an overall similarity score for a given sentence meaning
+    - and then we pick a best and worse one and compare the best one to the gold
+
+    If we set the pos tags we get an accuracy of like,
+    36%.
+
+    Without setting pos tags:
+
+    :param data:
+    :return:
+    '''
+    total_count = 0
+    statistics = []
+    for drs in data[0:50]:
+        clauses_drs = drs[1:]
+        relevant_synsets = []
+        tagged = pos_tag([drs[0].split(" ")])
+
+        gold_tags = []
+
+        for clause in clauses_drs:  # this part gets the synset from the relevant words
+            relevant_tag = 0
+            for item in tagged[0]:
+                word, tag = item
+                if clause[-2] == word:  # match drs word with pos tag
+                    relevant_tag = tag
+
+            if clause[1].islower():  # relevant entities are always all lowercase.
+                total_count += 1
+                clause_name = clause[1] + "." + clause[2].strip('"') # this is the gold tags
+                gold_tags.append(wn.synset(clause_name))
+                collected_synsets = wn.synsets(clause[1]) #lookup_wn([[(clause[1], relevant_tag)]], "max")
+                try:
+                    if collected_synsets != '':
+                        relevant_synsets.append(collected_synsets)
+                except WordNetError:  # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
+                    try:
+                        relevant_synsets.append(wn.synsets(clause[1]))  # select the first appropriate one
+                    except IndexError:
+                        # this word does not exist in wordnet
+                        pass
+
+        sentence = relevant_synsets
+        # base test, only take c3 and c4:
+        # len = number of words
+        # this first loop determines which things we have to multiply with each other
+
+        relevant_sims = []
+
+        for i in range(0, len(sentence)-1):  # a 1-d array of words
+            for j in range(i + 1, len(sentence)):
+                relevant_sims.append((i, j))
+        d = defaultdict(dict)
+
+
+        for cal in relevant_sims:
+            i, j = cal
+            synsets1, synsets2 = sentence[i], sentence[j]
+            #print(synsets1, synsets2)
+            # now find similarity between all these synsets
+            for x in synsets1:
+                for y in synsets2:
+                    #print(x, y)
+                    #print(x.wup_similarity(y))
+                    d[x][y] = x.wup_similarity(y)
+
+        # then determine the meaning per sentence for given word labels
+
+
+        #print(relevant_sims)
+        l = []
+        size = 1
+        for list_of_sets in sentence:
+            l.append(len(list_of_sets))
+            size *= len(list_of_sets)
+        # the following is very slow because it is nested for-loops :/
+        sum_similarity_dict = {}  # i HATE numpy
+        sum_similarity = np.arange(size).reshape(l)
+        with np.nditer(sum_similarity, flags=['multi_index'], op_flags=['readwrite']) as it:
+            for x in it:
+                r = it.multi_index
+                sum_score = 0
+                list_sense_meanings = []
+                for list_index in range(0, len(sentence)):
+                    #print("\t", sentence[list_index][it.multi_index[list_index]])
+                    list_sense_meanings.append(sentence[list_index][it.multi_index[list_index]])
+                for p in relevant_sims:
+                    x, y = p
+                    # x is what synset should be in first position
+                    # y is what synset should be in second position
+                    # print("senses", sentence[x][r[x]], sentence[y][r[y]])
+                    # print(d[sentence[x][r[x]]][sentence[y][r[y]]])
+                    sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]
+                #print("average similarity score: ", sum_score / len(relevant_sims))
+                try:
+                    sum_similarity_dict[tuple(list_sense_meanings)] = sum_score / len(relevant_sims)
+                except ZeroDivisionError:
+                    sum_similarity_dict[tuple(list_sense_meanings)] = 0
+
+        #check
+        #for x in sum_similarity_dict.keys():
+        #    print(x, sum_similarity_dict[x])
+
+        y = set(max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
+        x = set(gold_tags)
+
+
+        print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
+        print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
+        print("GOLD", gold_tags)
+
+
+        print("\tcompare best to gold tags")
+        print("\t\t not entirely correct - does not account for homonyms and order")
+        
+
+        print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
+        print("\t accuracy... ", len(x & y)/len(x))# not entirely correct -order matters (and no homonyms)
+        print()
+        
+
+        statistics.append(len(x & y)/len(x))    # not the best
+
+    print("performance on matching similar-based tags to gold parse")
+    print("\tmean", np.mean(statistics))
+    print("\tmedian", np.median(statistics))
+    print("\tstandard dev", np.std(statistics))
+    print("\tvariance", np.var(statistics))
 
 
 
@@ -281,8 +429,9 @@ def main():
     download_nltk_packages()
     data, drs_data = read_all_data()
     drs, claused_drs = extract_drs_features(drs_data)
+    test_similarity_matrix(claused_drs)
     #baseline_drs_wn(claused_drs)
-    determining_the_gold_similarity_distance(claused_drs)
+    #determining_the_gold_similarity_distance(claused_drs)
 
     #tokens, roles = extract_features(data)
     #pos_tags = pos_tag(tokens)
