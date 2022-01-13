@@ -272,7 +272,6 @@ def determining_the_gold_similarity_distance(data):
             if clause[1].islower():  # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
-
                 try:
                     relevant_synsets.append(wn.synset(str(clause_name)))
                 except WordNetError: # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
@@ -339,7 +338,7 @@ def test_similarity_matrix(data):
     statistics = []
     skip_counter = 0
     runtime_start = time.time()
-    complexity_threshold = 1000
+    complexity_threshold = 50
     for drs in data:
         clauses_drs = drs[1:]
         relevant_synsets = []
@@ -474,6 +473,16 @@ def test_similarity_matrix(data):
         print("\t accuracy... ", round(accuracy, 2))# not entirely correct -order matters (and no homonyms)
         print()
 
+        # further analysis:
+        if accuracy < 0.3:
+            print(drs[0])
+            print(tuple(gold_tags))
+            for item in sorted(sum_similarity_dict, key=sum_similarity_dict.get, reverse=True):
+                if (item) == tuple(gold_tags):
+                    print("\t", item, sum_similarity_dict[item])
+                else:
+                    print(item, sum_similarity_dict[item])
+
 
         statistics.append(accuracy)    # not the best
 
@@ -487,6 +496,8 @@ def test_similarity_matrix(data):
     print("\tmedian", np.median(statistics))
     print("\tstandard dev", np.std(statistics))
     print("\tvariance", np.var(statistics))
+
+
 
 def calculate_accuracy(gold, found):
     count = 0
