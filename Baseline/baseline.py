@@ -304,7 +304,7 @@ def test_similarity_matrix(data):
     '''
     total_count = 0
     statistics = []
-    for drs in data[0:50]:
+    for drs in data[0:5]:
         clauses_drs = drs[1:]
         relevant_synsets = []
         tagged = pos_tag([drs[0].split(" ")])
@@ -410,7 +410,7 @@ def test_similarity_matrix(data):
         print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
         print("\t accuracy... ", len(x & y)/len(x))# not entirely correct -order matters (and no homonyms)
         print()
-        
+
 
         statistics.append(len(x & y)/len(x))    # not the best
 
