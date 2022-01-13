@@ -8,6 +8,7 @@ from nltk.corpus.reader.wordnet import WordNetError
 from collections import defaultdict
 import numpy as np
 import regex as re
+import time
 from itertools import permutations
 
 '''
@@ -89,7 +90,7 @@ def lookup_wn(pos_tags, num_synsets):
 
 
     # hand-coded exceptions: 'time' in DRS is always time.n.08
-    print(pos_tags)
+    #print(pos_tags)
     [[(a, b)]] = pos_tags
     b = re.sub(pattern, '', b)
     if a == 'time':
@@ -336,6 +337,9 @@ def test_similarity_matrix(data):
     '''
     total_count = 0
     statistics = []
+    skip_counter = 0
+    runtime_start = time.time()
+    complexity_threshold = 1000
     for drs in data:
         clauses_drs = drs[1:]
         relevant_synsets = []
@@ -357,10 +361,14 @@ def test_similarity_matrix(data):
                 try:
                     gold_tags.append(wn.synset(clause_name)) # should always work...?
                 except WordNetError:
-                    #print(clause[1])
-                    #print(wn.synset(clause[1]))
+                    print("whole clause ", clause)
+
+                    print("clause ", clause[1])
+                    print(wn.synsets(clause[1]))
                     try:
-                        gold_tags.append(wn.synsets(clause[1])[0])
+                        found_synsets = wn.synsets(clause[1])
+                        if found_synsets != []:
+                            gold_tags.append(wn.synsets(clause[1])[0])
                     except IndexError:
                         gold_tags = gold_tags
                         print("strange token error, no synsets found")
@@ -369,16 +377,15 @@ def test_similarity_matrix(data):
                 #print(collected_synsets)
                 #print(clause[1], relevant_tag)
                 [(word, collected_synsets)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
-                #print(collected_synsets)
                 try:
-                    if collected_synsets != '':
+                    if collected_synsets != '' and collected_synsets != []:
                         relevant_synsets.append(collected_synsets)
                 except WordNetError:  # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
                     try:
-                        relevant_synsets.append(wn.synsets(clause[1]))  # select the first appropriate one
+                        found_synsets = wn.synsets(clause[1])
+                        if found_synsets != []:
+                            relevant_synsets.append(wn.synsets(clause[1]))  # select the first appropriate one
                     except IndexError:
-                        #relevant_synsets.append("empty")
-                        relevant_synsets = relevant_synsets
                         print("strange token error, no synsets found")
                         # this word does not exist in wordnet
                         pass
@@ -420,6 +427,13 @@ def test_similarity_matrix(data):
         # the following is very slow because it is nested for-loops :/
         sum_similarity_dict = {}  # i HATE numpy
         sum_similarity = np.arange(size).reshape(l)
+        #print(sum_similarity)
+
+        if size > complexity_threshold:    # computer says no to too many options, need a way to narrow it down
+            #print("complex too long for computer.. take out during final")
+            skip_counter += 1
+            continue
+
         with np.nditer(sum_similarity, flags=['multi_index'], op_flags=['readwrite']) as it:
             for x in it:
                 r = it.multi_index
@@ -434,7 +448,7 @@ def test_similarity_matrix(data):
                     # y is what synset should be in second position
                     # print("senses", sentence[x][r[x]], sentence[y][r[y]])
                     # print(d[sentence[x][r[x]]][sentence[y][r[y]]])
-                    sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]
+                    sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]    # add some pruning because otherwise it takes atrociously long
                 #print("average similarity score: ", sum_score / len(relevant_sims))
                 try:
                     sum_similarity_dict[tuple(list_sense_meanings)] = sum_score / len(relevant_sims)
@@ -450,8 +464,8 @@ def test_similarity_matrix(data):
         y = set(max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
         x = set(gold_tags)
 
-        #print("GOLD", gold_tags)
-        #print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
+        print("GOLD", gold_tags)
+        print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
         #print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
 
 
@@ -463,7 +477,11 @@ def test_similarity_matrix(data):
 
         statistics.append(accuracy)    # not the best
 
-    print(statistics)
+    print("PROGRAM PERFORMANCE:")
+    print(f"\tnumber of skipped items {skip_counter}, with a threshold of {complexity_threshold}")
+    print(f"\truntime: {round(time.time() - runtime_start, 2)} seconds")
+    #print(statistics)
+    print("MODEL PERFORMANCE:")
     print("performance on matching similar-based tags to gold parse")
     print("\tmean", np.mean(statistics))
     print("\tmedian", np.median(statistics))
