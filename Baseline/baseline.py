@@ -7,7 +7,16 @@ from nltk.corpus.reader import Synset
 from nltk.corpus.reader.wordnet import WordNetError
 from collections import defaultdict
 import numpy as np
+import regex as re
 from itertools import permutations
+
+'''
+Ti di:
+- clean up code, reogrnaize and put into different file
+- fix accuracy metric
+- (new baseline)
+- look at specific examples of stuff that goes wrong (when are synsets not generated)
+'''
 
 
 def read_data():
@@ -65,35 +74,39 @@ def lookup_wn(pos_tags, num_synsets):
     that is found. Returns a list of tuples with the word and the WordNet result."""
     # To-do: incorporate named entities as fixed WordNet results, for
     # example Celestial-Seasonings (organization) as company.n.01.
+    # regex against expcial characters
+    pattern = r'[^A-Za-z0-9]+'
 
-    nouns = ['NN', 'NNP', 'NNS', 'PRP']
+    nouns = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN']
     adjectives = ['JJ', 'JJR', 'JJS']
     adverbs = ['RB', 'RBR', 'RBS']
     verbs = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']
-    possible_tags = ['NN', 'NNP', 'NNS', 'PRP', 'JJ', 'JJR', 'JJS',
+    possible_tags = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN', 'JJ', 'JJR', 'JJS',
                      'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG',
-                     'VBN', 'VBP', 'VBZ']
+                     'VBN', 'VBP', 'VBZ', 'POS', 'DT', 'CD', 'CC', 'PDT', ]
 
     wn_annotations = []
 
 
     # hand-coded exceptions: 'time' in DRS is always time.n.08
-    #print(pos_tags)
+    print(pos_tags)
     [[(a, b)]] = pos_tags
-    if pos_tags == [[('time', 'POS')]] or (a == 'time' and b in verbs):
+    b = re.sub(pattern, '', b)
+    if a == 'time':
         return [('time', [wn.synset('fourth_dimension.n.01')])]
 
     for sentence in pos_tags:
         for word in sentence:
-            if word[1] in possible_tags:
+            suggested_pos_tag = re.sub(pattern, '', word[1])
+            if suggested_pos_tag in possible_tags:
                 wn_pos = ''
-                if word[1] in nouns:
+                if suggested_pos_tag in nouns:
                     wn_pos = wn.NOUN
-                elif word[1] in adjectives:
+                elif suggested_pos_tag in adjectives:
                     wn_pos = wn.ADJ
-                elif word[1] in adverbs:
+                elif suggested_pos_tag in adverbs:
                     wn_pos = wn.ADV
-                elif word[1] in verbs:
+                elif suggested_pos_tag in verbs:
                     wn_pos = wn.VERB
 
                 if wn.synsets(word[0], pos=wn_pos) != []:
@@ -103,7 +116,7 @@ def lookup_wn(pos_tags, num_synsets):
                         wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)[:num_synsets]))
 
                 else:
-                    wn_annotations.append((word[0], ''))
+                    wn_annotations.append((word[0], wn.synsets(word[0]))) # don't filter for pos tags, just shoot in the dark
             else:
                 wn_annotations.append((word[0], ''))
     #print(wn_annotations)
@@ -323,7 +336,7 @@ def test_similarity_matrix(data):
     '''
     total_count = 0
     statistics = []
-    for drs in data[0:20]:
+    for drs in data:
         clauses_drs = drs[1:]
         relevant_synsets = []
         tagged = pos_tag([drs[0].split(" ")])
@@ -338,11 +351,20 @@ def test_similarity_matrix(data):
                 if clause[-2] == word:  # match drs word with pos tag
                     relevant_tag = tag
 
-            if clause[1].islower():  # relevant entities are always all lowercase.
+            if clause[1].islower() and clause[1].isalnum():  # relevant entities are always all lowercase and don't contain weird signs.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"') # this is the gold tags
-                #print(clause_name, clause[1])
-                gold_tags.append(wn.synset(clause_name))
+                try:
+                    gold_tags.append(wn.synset(clause_name)) # should always work...?
+                except WordNetError:
+                    #print(clause[1])
+                    #print(wn.synset(clause[1]))
+                    try:
+                        gold_tags.append(wn.synsets(clause[1])[0])
+                    except IndexError:
+                        gold_tags = gold_tags
+                        print("strange token error, no synsets found")
+                        pass
                 #collected_synsets = wn.synsets(clause[1])
                 #print(collected_synsets)
                 #print(clause[1], relevant_tag)
@@ -355,8 +377,12 @@ def test_similarity_matrix(data):
                     try:
                         relevant_synsets.append(wn.synsets(clause[1]))  # select the first appropriate one
                     except IndexError:
+                        #relevant_synsets.append("empty")
+                        relevant_synsets = relevant_synsets
+                        print("strange token error, no synsets found")
                         # this word does not exist in wordnet
                         pass
+
 
         sentence = relevant_synsets
         # base test, only take c3 and c4:
@@ -397,7 +423,7 @@ def test_similarity_matrix(data):
         with np.nditer(sum_similarity, flags=['multi_index'], op_flags=['readwrite']) as it:
             for x in it:
                 r = it.multi_index
-                sum_score = 1
+                sum_score = 0
                 list_sense_meanings = []
                 for list_index in range(0, len(sentence)):
                     #print("\t", sentence[list_index][it.multi_index[list_index]])
@@ -419,24 +445,23 @@ def test_similarity_matrix(data):
         #for x in sum_similarity_dict.keys():
         #    print(x, sum_similarity_dict[x])
 
+        accuracy = calculate_accuracy(gold_tags, max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
+
         y = set(max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
         x = set(gold_tags)
 
-        print("GOLD", gold_tags)
-        print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
-        print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
+        #print("GOLD", gold_tags)
+        #print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
+        #print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
 
 
-        print("\tcompare best to gold tags")
-        print("\t\t not entirely correct - does not account for homonyms and order")
-        
-
-        print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
-        print("\t accuracy... ", len(x & y)/len(x))# not entirely correct -order matters (and no homonyms)
+        # print("\tcompare best to gold tags")
+        #print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
+        print("\t accuracy... ", round(accuracy, 2))# not entirely correct -order matters (and no homonyms)
         print()
 
 
-        statistics.append(round(len(x & y)/len(x), 2))    # not the best
+        statistics.append(accuracy)    # not the best
 
     print(statistics)
     print("performance on matching similar-based tags to gold parse")
@@ -444,6 +469,21 @@ def test_similarity_matrix(data):
     print("\tmedian", np.median(statistics))
     print("\tstandard dev", np.std(statistics))
     print("\tvariance", np.var(statistics))
+
+def calculate_accuracy(gold, found):
+    count = 0
+    if len(gold) == len(found):
+        for i in range(0, len(gold)):
+            if gold[i] == found[i]:
+                count += 1
+        return count/len(gold)
+    else:
+        print("WRONG SIZE", "gold length ", len(gold), "found length ", len(found))
+        print("GOLD", gold)
+        print("best", found)  # todo add a progress bar
+        return 0
+
+
 
 
 
