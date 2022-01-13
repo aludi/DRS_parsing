@@ -78,13 +78,13 @@ def lookup_wn(pos_tags, num_synsets):
     # regex against expcial characters
     pattern = r'[^A-Za-z0-9]+'
 
-    nouns = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN']
+    nouns = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN', "NNPS"]
     adjectives = ['JJ', 'JJR', 'JJS']
     adverbs = ['RB', 'RBR', 'RBS']
     verbs = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']
-    possible_tags = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN', 'JJ', 'JJR', 'JJS',
+    possible_tags = ['NN', 'NNP', 'NNS', "NNPS", 'PRP', 'WP', 'IN', 'JJ', 'JJR', 'JJS',
                      'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG',
-                     'VBN', 'VBP', 'VBZ', 'POS', 'DT', 'CD', 'CC', 'PDT', ]
+                     'VBN', 'VBP', 'VBZ', 'POS', 'DT', 'CD', 'CC', 'PDT', 'WDT', 'WRB', "$", "RP"]
 
     wn_annotations = []
 
