@@ -5,10 +5,16 @@ import nltk
 from nltk.corpus import wordnet as wn
 from nltk.corpus.reader import Synset
 from nltk.corpus.reader.wordnet import WordNetError
+from nltk.corpus import wordnet_ic
+from nltk.tokenize import word_tokenize
+
 from collections import defaultdict
 import numpy as np
 import regex as re
 import time
+import gensim
+import gensim.downloader
+
 from itertools import permutations
 
 '''
@@ -95,6 +101,12 @@ def lookup_wn(pos_tags, num_synsets):
     b = re.sub(pattern, '', b)
     if a == 'time':
         return [('time', [wn.synset('fourth_dimension.n.01')])]
+    if a == 'entity':
+        return [('entity', [wn.synset('entity.n.01')])]
+    if a == 'event':
+        return [('event', [wn.synset('event.n.01')])]
+    if a == 'person':
+        return [('person', [wn.synset('person.n.01')])]
 
     for sentence in pos_tags:
         for word in sentence:
@@ -130,6 +142,8 @@ def download_nltk_packages():
     nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('wordnet', quiet=True)
     nltk.download('omw-1.4', quiet=True)
+    nltk.download('wordnet_ic', quiet=True)
+
 
 
 def read_all_data():
@@ -338,8 +352,17 @@ def test_similarity_matrix(data):
     statistics = []
     skip_counter = 0
     runtime_start = time.time()
-    complexity_threshold = 50
+    complexity_threshold = 10000
+    correct_tags_too_low = 0
+    correct_tags_not_present = 0
+    measure = "path" #performs about the same (or better!) and way faster
+    if measure in ["hybrid", "word_vectors"]:
+        pre_vectors = gensim.downloader.load('glove-wiki-gigaword-50') # added w2v for cross pos-tag comparison
+    print(f"load time: {round(time.time()-runtime_start, 2)} s")
+
+
     for drs in data:
+        #print(drs[0])
         clauses_drs = drs[1:]
         relevant_synsets = []
         tagged = pos_tag([drs[0].split(" ")])
@@ -378,6 +401,8 @@ def test_similarity_matrix(data):
                 [(word, collected_synsets)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
                 try:
                     if collected_synsets != '' and collected_synsets != []:
+
+
                         relevant_synsets.append(collected_synsets)
                 except WordNetError:  # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
                     try:
@@ -402,7 +427,6 @@ def test_similarity_matrix(data):
                 relevant_sims.append((i, j))
         d = defaultdict(dict)
 
-
         for cal in relevant_sims:
             i, j = cal
             synsets1, synsets2 = sentence[i], sentence[j]
@@ -410,9 +434,74 @@ def test_similarity_matrix(data):
             # now find similarity between all these synsets
             for x in synsets1:
                 for y in synsets2:
-                    #print(x, y)
-                    #print(x.wup_similarity(y))
-                    d[x][y] = x.wup_similarity(y)
+                    if measure == "ic":
+                        if x.pos() == y.pos():
+                            d[x][y] = x.res_similarity(y, wordnet_ic.ic('ic-bnc-resnik.dat'))    # SOOO SLOW
+                        else:
+                            d[x][y] = 0 # can't compare non-same parts of speach using ic
+
+                    elif measure == "path":
+                        d[x][y] = x.wup_similarity(y)
+                    elif measure == "word_vectors":
+
+                        #if x.pos() == y.pos():  # only match similar tags
+                        #    d[x][y] = x.wup_similarity(y)
+                        #
+                        #else:
+                        hyp = x.hypernyms() # get the hypernyms of x
+                        trop = x.hyponyms() # get troponyms of x
+                        m = 1
+                        feat = []
+                        for l in hyp:
+                            feat.append(l)
+                        for l in trop:
+                            feat.append(l)
+
+                        for word in feat:
+
+                            #print(word)
+                            #print(x, y)
+
+
+                            m = 1
+                            try:
+
+                                m *= pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
+                                # print(vec.similarity(rel, word.lemma_names()[0]))
+                            except KeyError:
+                                m *= 1
+
+                        d[x][y] = m
+
+                    elif measure == "hybrid":
+                        if x.pos() == y.pos():
+                            d[x][y] = x.wup_similarity(y)
+                        else:
+                            hyp = x.hypernyms()  # get the hypernyms of x
+                            trop = x.hyponyms()  # get troponyms of x
+                            m = 1
+                            feat = []
+                            for l in hyp:
+                                feat.append(l)
+                            for l in trop:
+                                feat.append(l)
+
+                            for word in feat:
+
+                                # print(word)
+                                # print(x, y)
+
+                                m = 1
+                                try:
+
+                                    m *= pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
+                                    # print(vec.similarity(rel, word.lemma_names()[0]))
+                                except KeyError:
+                                    m *= 1
+
+                            d[x][y] = m
+
+
 
         # then determine the meaning per sentence for given word labels
 
@@ -433,6 +522,8 @@ def test_similarity_matrix(data):
             skip_counter += 1
             continue
 
+        skipped_list = [wn.synset('fourth_dimension.n.01'), wn.synset('event.n.01'), wn.synset('person.n.01'),
+                        wn.synset('entity.n.01')]
         with np.nditer(sum_similarity, flags=['multi_index'], op_flags=['readwrite']) as it:
             for x in it:
                 r = it.multi_index
@@ -443,11 +534,21 @@ def test_similarity_matrix(data):
                     list_sense_meanings.append(sentence[list_index][it.multi_index[list_index]])
                 for p in relevant_sims:
                     x, y = p
+                    #sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]  # add some pruning because otherwise it takes atrociously long
+
                     # x is what synset should be in first position
                     # y is what synset should be in second position
-                    # print("senses", sentence[x][r[x]], sentence[y][r[y]])
-                    # print(d[sentence[x][r[x]]][sentence[y][r[y]]])
-                    sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]    # add some pruning because otherwise it takes atrociously long
+                    #print("senses", sentence[x][r[x]], sentence[y][r[y]])
+                    #print(d[sentence[x][r[x]]][sentence[y][r[y]]])
+
+                    # filter for known knowledge - structual features of the DRS
+                    # should not be taken into account (like time = fourth_dimension)
+                    # and be = entity
+                    # these should not count towards similarirty
+                    if sentence[x][r[x]] not in skipped_list and sentence[y][r[y]] not in skipped_list:
+                        sum_score += d[sentence[x][r[x]]][sentence[y][r[y]]]    # add some pruning because otherwise it takes atrociously long
+                    else:
+                        sum_score += 1
                 #print("average similarity score: ", sum_score / len(relevant_sims))
                 try:
                     sum_similarity_dict[tuple(list_sense_meanings)] = sum_score / len(relevant_sims)
@@ -463,25 +564,39 @@ def test_similarity_matrix(data):
         y = set(max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
         x = set(gold_tags)
 
-        print("GOLD", gold_tags)
-        print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
+        #print("GOLD", gold_tags)
+        #print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
         #print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
 
 
         # print("\tcompare best to gold tags")
         #print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
-        print("\t accuracy... ", round(accuracy, 2))# not entirely correct -order matters (and no homonyms)
-        print()
+        #print("\t accuracy... ", round(accuracy, 2))# not entirely correct -order matters (and no homonyms)
+        #print()
 
         # further analysis:
-        if accuracy < 0.3:
+        acc_boundary = 0.33
+        if accuracy < acc_boundary:
+            print("FURTHER ANALYSIS")
+            flag = 0
             print(drs[0])
             print(tuple(gold_tags))
+            print(max(sum_similarity_dict.items(), key=lambda k: k[1]))
             for item in sorted(sum_similarity_dict, key=sum_similarity_dict.get, reverse=True):
                 if (item) == tuple(gold_tags):
                     print("\t", item, sum_similarity_dict[item])
+                    correct_tags_too_low += 1
+                    flag = 1
                 else:
                     print(item, sum_similarity_dict[item])
+                    pass
+
+            if flag == 0:
+                correct_tags_not_present += 1
+
+                #else:
+                #    print(item, sum_similarity_dict[item])
+        #print()
 
 
         statistics.append(accuracy)    # not the best
@@ -491,6 +606,10 @@ def test_similarity_matrix(data):
     print(f"\truntime: {round(time.time() - runtime_start, 2)} seconds")
     #print(statistics)
     print("MODEL PERFORMANCE:")
+    print(f"Out of low performance (>{acc_boundary*100}%), why?")
+    print(f"\t correct generation, but too low similarity ranking {correct_tags_too_low}")
+    print(f"\t incorrect generation {correct_tags_not_present}")
+
     print("performance on matching similar-based tags to gold parse")
     print("\tmean", np.mean(statistics))
     print("\tmedian", np.median(statistics))
@@ -514,15 +633,99 @@ def calculate_accuracy(gold, found):
 
 
 
+def test():
+    pre_vectors = gensim.downloader.load('glove-twitter-25')
+    
+    
+    cat = wn.synset("cat.n.01")
+    meow = wn.synset("mew.v.01")
+    bark = wn.synset("bark.v.04")
+    dog = wn.synset("dog.n.01")
 
+    alive = wn.synset("alive.a.01")
+    person = wn.synset("person.n.03")
+    alive1 = wn.synset("alive.s.01")
+    alive2 = wn.synset("alive.a.01")
+    bark = wn.synset("bark.v.04")
+    dog = wn.synset("dog.n.01")
 
+    print(cat.wup_similarity(dog))
+    print(cat.wup_similarity(meow))
+    print(cat.wup_similarity(bark))
+    print()
+    print(dog.wup_similarity(cat))
+    print(dog.wup_similarity(meow))
+    print(dog.wup_similarity(bark))
+    print()
+    print(meow.wup_similarity(bark))
 
+    print()
+    print()
+    print(pre_vectors.similarity('cat', 'dog'))
+    print(pre_vectors.similarity('cat', 'meow'))
+    print(pre_vectors.similarity('cat', 'bark'))
+    print()
+    print(pre_vectors.similarity('meow', 'bark'))
+    print(pre_vectors.similarity('dog', 'meow'))
+    print(pre_vectors.similarity('dog', 'bark'))
+
+def test_2():
+    #wn_vectors = gensim.models.Word2Vec.load_word2vec_format('wn2vec.txt')
+    #wn_vectors = gensim.models.KeyedVectors.load_word2vec_format('wn2vec.txt')
+    vec = gensim.downloader.load('glove-wiki-gigaword-50')    #print(wn_vectors.similarity('woman', 'man'))
+    meanings = wn.synsets(("cat"))
+    sim_words = ['jump', 'rust', 'salt', 'beautiful', 'dog']
+    for rel in sim_words:
+        for cat in meanings:
+            print(cat)
+            print("\t", cat.hypernyms())
+            m = 1
+            for word in cat.hypernyms():
+
+                #print(word)
+                #print(word.lemma_names())
+
+                try:
+                    m *= vec.similarity(rel, word.lemma_names()[0])
+                    #print(vec.similarity(rel, word.lemma_names()[0]))
+                except KeyError:
+                    m *= 1
+            print(cat, rel, m)
+
+    '''print(vec.most_similar("cat"))
+    print(vec.similarity('cat', 'jump'))
+    print(vec.similarity('cat', 'drive'))
+    print(vec.similarity('cat', 'sing'))
+    print(vec.similarity('cat', 'drink'))
+    print(vec.similarity('cat', 'meow'))
+    print(vec.similarity('cat', 'grow'))
+    print(vec.similarity('cat', 'rust'))
+    print("adj")
+    print(vec.similarity('cat', 'beautiful'))
+    print(vec.similarity('cat', 'salt'))
+    print("dog")
+    print(vec.similarity('cat', 'dog'))
+'''
+
+    '''cat = wn.synset("cat.n.01")
+    meow = wn.synset("mew.v.01")
+    bark = wn.synset("bark.v.04")
+    dog = wn.synset("dog.n.01")
+
+    print(pre_vectors.similarity('cat', 'dog'))
+    print(pre_vectors.similarity('cat', 'meow'))
+    print(pre_vectors.similarity('cat', 'bark'))
+    print()
+    print(pre_vectors.similarity('meow', 'bark'))
+    print(pre_vectors.similarity('dog', 'meow'))
+    print(pre_vectors.similarity('dog', 'bark'))'''
 
 
 def main():
     download_nltk_packages()
     data, drs_data = read_all_data()
     drs, claused_drs = extract_drs_features(drs_data)
+    #test_2()
     test_similarity_matrix(claused_drs)
     #baseline_drs_wn(claused_drs)
     #determining_the_gold_similarity_distance(claused_drs)
