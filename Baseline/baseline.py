@@ -355,9 +355,11 @@ def test_similarity_matrix(data):
     complexity_threshold = 10000
     correct_tags_too_low = 0
     correct_tags_not_present = 0
-    measure = "path" #performs about the same (or better!) and way faster
+    same_score_but_lower_in_order = 0
+    tot = 0
+    measure = "word_vectors" #performs about the same (or better!) and way faster
     if measure in ["hybrid", "word_vectors"]:
-        pre_vectors = gensim.downloader.load('glove-wiki-gigaword-50') # added w2v for cross pos-tag comparison
+        pre_vectors = gensim.downloader.load('glove-wiki-gigaword-100') # added w2v for cross pos-tag comparison
     print(f"load time: {round(time.time()-runtime_start, 2)} s")
 
 
@@ -450,9 +452,12 @@ def test_similarity_matrix(data):
                         #else:
                         hyp = x.hypernyms() # get the hypernyms of x
                         trop = x.hyponyms() # get troponyms of x
+                        #syn = x.lemma_names()
                         m = 1
                         feat = []
                         for l in hyp:
+                            feat.append(l)
+                        for l in trop:
                             feat.append(l)
                         for l in trop:
                             feat.append(l)
@@ -485,6 +490,8 @@ def test_similarity_matrix(data):
                                 feat.append(l)
                             for l in trop:
                                 feat.append(l)
+
+
 
                             for word in feat:
 
@@ -569,26 +576,29 @@ def test_similarity_matrix(data):
         #print("worst", min(sum_similarity_dict.items(), key=lambda k: k[1]))
 
 
-        # print("\tcompare best to gold tags")
-        #print("\t overlap in wordnet labels... ", x & y) # not entirely correct -order matters (and no homonyms)
-        #print("\t accuracy... ", round(accuracy, 2))# not entirely correct -order matters (and no homonyms)
-        #print()
+
 
         # further analysis:
-        acc_boundary = 0.33
+        acc_boundary = 1
         if accuracy < acc_boundary:
-            print("FURTHER ANALYSIS")
+            #print("FURTHER ANALYSIS")
             flag = 0
-            print(drs[0])
-            print(tuple(gold_tags))
-            print(max(sum_similarity_dict.items(), key=lambda k: k[1]))
+            #print(drs[0])
+            #print(tuple(gold_tags))
+            #print(max(sum_similarity_dict.items(), key=lambda k: k[1]))
+            high_score = max(sum_similarity_dict.items(), key=lambda k: k[1])[1]
+            #print(high_score)
             for item in sorted(sum_similarity_dict, key=sum_similarity_dict.get, reverse=True):
+
                 if (item) == tuple(gold_tags):
-                    print("\t", item, sum_similarity_dict[item])
+                    #print("\t", item, sum_similarity_dict[item])
                     correct_tags_too_low += 1
                     flag = 1
+                    #print("sum difs", sum_similarity_dict[item]-high_score)
+                    if sum_similarity_dict[item] == high_score:
+                        same_score_but_lower_in_order += 1
                 else:
-                    print(item, sum_similarity_dict[item])
+                    #print(item, sum_similarity_dict[item])
                     pass
 
             if flag == 0:
@@ -597,7 +607,7 @@ def test_similarity_matrix(data):
                 #else:
                 #    print(item, sum_similarity_dict[item])
         #print()
-
+        tot += 1
 
         statistics.append(accuracy)    # not the best
 
@@ -609,6 +619,7 @@ def test_similarity_matrix(data):
     print(f"Out of low performance (>{acc_boundary*100}%), why?")
     print(f"\t correct generation, but too low similarity ranking {correct_tags_too_low}")
     print(f"\t incorrect generation {correct_tags_not_present}")
+    print(f"\t same score, unlucky {same_score_but_lower_in_order} out of {tot}")
 
     print("performance on matching similar-based tags to gold parse")
     print("\tmean", np.mean(statistics))
