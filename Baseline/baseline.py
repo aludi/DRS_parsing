@@ -1,119 +1,25 @@
 #!/usr/bin/env python
 
+import re
 
 import nltk
 from nltk.corpus import wordnet as wn
-from nltk.corpus.reader import Synset
-from nltk.corpus.reader.wordnet import WordNetError
-
-import numpy as np
-
-
-def read_data():
-    """Reads in the data from (currently) only the development file
-    and returns this as a list. Pops the last element, because it is empty."""
-
-    with open('../PMB/parsing/layer_data/4.0.0/en/gold/dev.conll') as file:
-        data = file.read()
-        data = data.split('\n\n')
-        data.pop(-1)
-    return data
-
-
-def read_drs_data():
-    """ Reads in the data from the DRS-clause structure dev file
-    and returns it as a list."""
-
-    with open('../PMB/data/pmb-4.0.0/gold/dev.txt') as file:
-        data = file.read()
-        data = data.split('\n\n')
-        data.pop(-1)
-    return data
-
-
-def extract_features(data):
-    """ Extracts specific features from the data, such as tokens and possibly other
-    things. Extracting extra features can be done by adding them in the loops."""
-
-    tokens = []
-    roles = []
-    for item in data:
-        lines = item.split('\n')
-        temp = [[], []]
-        for line in lines:
-            line = line.split('\t')
-            if line[0][0] != '#':
-                temp[0].append(line[0])
-                temp[1].append(line[6])
-        tokens.append(temp[0])
-        roles.append(temp[1])
-    return tokens, roles
-
-
-def pos_tag(tokens):
-    """ Conducts part-of-speech tagging on the extracted tokens from
-    the data using NLTK."""
-    pos_tags = []
-    for sentence in tokens:
-        pos_tags.append(nltk.pos_tag(sentence))
-    return pos_tags
-
-
-def lookup_wn(pos_tags, num_synsets):
-    """Looks up the tokens on WordNet and annotates it with the first result
-    that is found. Returns a list of tuples with the word and the WordNet result."""
-    # To-do: incorporate named entities as fixed WordNet results, for
-    # example Celestial-Seasonings (organization) as company.n.01.
-
-    nouns = ['NN', 'NNP', 'NNS']
-    adjectives = ['JJ', 'JJR', 'JJS']
-    adverbs = ['RB', 'RBR', 'RBS']
-    verbs = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']
-    possible_tags = ['NN', 'NNP', 'NNS', 'JJ', 'JJR', 'JJS',
-                     'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG',
-                     'VBN', 'VBP', 'VBZ']
-    wn_annotations = []
-
-    for sentence in pos_tags:
-        for word in sentence:
-            if word[1] in possible_tags:
-                wn_pos = ''
-                if word[1] in nouns:
-                    wn_pos = wn.NOUN
-                elif word[1] in adjectives:
-                    wn_pos = wn.ADJ
-                elif word[1] in adverbs:
-                    wn_pos = wn.ADV
-                elif word[1] in verbs:
-                    wn_pos = wn.VERB
-
-                if wn.synsets(word[0], pos=wn_pos) != []:
-                    #wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)[0]))
-                    if num_synsets == "max":
-                        wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)))
-                    elif num_synsets:
-                        wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)[:num_synsets]))
-
-                else:
-                    wn_annotations.append((word[0], ''))
-            else:
-                wn_annotations.append((word[0], ''))
-    return wn_annotations
-
 
 
 def download_nltk_packages():
     """ Downloads the nltk packages necessary for this project"""
-    nltk.download('averaged_perceptron_tagger', quiet=True)
     nltk.download('wordnet', quiet=True)
-    nltk.download('omw-1.4', quiet=True)
 
 
-def read_all_data():
-    """ Read the tagged sentences and the drs's into the project"""
-    data = read_data()
-    drs_data = read_drs_data()
-    return data, drs_data
+def read_drs_data(file):
+    """ Reads in the data from the DRS-clause structure dev file
+    and returns it as a list."""
+
+    with open(file, encoding='utf8') as file:
+        data = file.read()
+        data = data.split('\n\n')
+        data.pop(-1)
+    return data
 
 
 def extract_drs_features(data):
@@ -148,6 +54,113 @@ def extract_drs_features(data):
     return structured_data, claused_drs
 
 
+def pos_tag(tokens):
+    """ Conducts part-of-speech tagging on the extracted tokens from
+    the data using NLTK."""
+    pos_tags = []
+    for sentence in tokens:
+        pos_tags.append(nltk.pos_tag(sentence))
+    return pos_tags
+
+
+def lookup_wn(pos_tags, num_synsets):
+    """Looks up the tokens on WordNet and annotates it with the first result
+    that is found. Returns a list of tuples with the word and the WordNet result."""
+    # To-do: incorporate named entities as fixed WordNet results, for
+    # example Celestial-Seasonings (organization) as company.n.01.
+    # regex against expcial characters
+    pattern = r'[^A-Za-z0-9]+'
+
+    nouns = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN', "NNPS"]
+    adjectives = ['JJ', 'JJR', 'JJS']
+    adverbs = ['RB', 'RBR', 'RBS']
+    verbs = ['VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ']
+    possible_tags = ['NN', 'NNP', 'NNS', "NNPS", 'PRP', 'WP', 'IN', 'JJ', 'JJR', 'JJS',
+                     'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG',
+                     'VBN', 'VBP', 'VBZ', 'POS', 'DT', 'CD', 'CC', 'PDT', 'WDT', 'WRB', "$", "RP"]
+
+    wn_annotations = []
+
+    # hand-coded exceptions: 'time' in DRS is always time.n.08
+    #print(pos_tags)
+    [[(a, b)]] = pos_tags
+    b = re.sub(pattern, '', b)
+    if a == 'time':
+        return [('time', [wn.synset('fourth_dimension.n.01')])]
+    if a == 'entity':
+        return [('entity', [wn.synset('entity.n.01')])]
+    if a == 'event':
+        return [('event', [wn.synset('event.n.01')])]
+    if a == 'person':
+        return [('person', [wn.synset('person.n.01')])]
+
+    for sentence in pos_tags:
+        for word in sentence:
+            suggested_pos_tag = re.sub(pattern, '', word[1])
+            if suggested_pos_tag in possible_tags:
+                wn_pos = ''
+                if suggested_pos_tag in nouns:
+                    wn_pos = wn.NOUN
+                elif suggested_pos_tag in adjectives:
+                    wn_pos = wn.ADJ
+                elif suggested_pos_tag in adverbs:
+                    wn_pos = wn.ADV
+                elif suggested_pos_tag in verbs:
+                    wn_pos = wn.VERB
+
+                if wn.synsets(word[0], pos=wn_pos) != []:
+                    if num_synsets == "max":
+                        wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)))
+                    elif num_synsets:
+                        wn_annotations.append((word[0], wn.synsets(word[0], pos=wn_pos)[:num_synsets]))
+
+                else:
+                    wn_annotations.append((word[0], wn.synsets(word[0]))) # don't filter for pos tags, just shoot in the dark
+            else:
+                wn_annotations.append((word[0], ''))
+    #print(wn_annotations)
+    return wn_annotations
+
+
+def calculate_frequency(claused_drs):
+    '''Calculates how often each WordNet token (synset label) occurs for each word
+    in the dev and test set. Returns a dictionary of dictionaries with the word
+    and the occurrence of each WordNet token for that word.'''
+    frequency_counts = {}
+    for drs in claused_drs:
+        annotations = drs[1:]
+        for clause in annotations:
+            if len(clause[2]) != 2:
+                word = clause[1]
+                token = clause[2]
+                if word not in frequency_counts:
+                    frequency_counts[word] = {token: 1}
+                else:
+                    if token not in frequency_counts[word]:
+                        frequency_counts[word][token] = 1
+                    else:
+                        frequency_counts[word][token] += 1
+    return frequency_counts
+
+
+def determine_highest(frequency_counts):
+    '''Determines what the most frequent WordNet token is for the words
+    in the dev and test set and returns that.'''
+    most_frequent = []
+    for key, value in frequency_counts.items():
+        if len(value) >= 2:
+            highest_token = ""
+            highest_value = 0
+            for key2, value2 in value.items():
+                if value2 >= highest_value:
+                    highest_token = key2
+                    highest_value = value2
+            most_frequent.append((key, highest_token))
+        else:
+            most_frequent.append((key, list(value)[0]))
+    return most_frequent
+
+
 def baseline_drs_wn(data):
     """ Primitive baseline system (count-based) for assigning word senses
     to drs-es.
@@ -164,11 +177,11 @@ def baseline_drs_wn(data):
     correct_pos_count = 0
 
     for drs in data:
-        #print()
         clauses_drs = drs[1:]
+        print(drs[0])
         tagged = pos_tag([drs[0].split(" ")])
+        print(tagged)
         for clause in clauses_drs:
-            #print(clause)
             relevant_tag = 0
             relevant_word = 0
             for item in tagged[0]:
@@ -179,7 +192,7 @@ def baseline_drs_wn(data):
             if clause[1].islower(): # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
-
+                print(clause[1], relevant_tag)
                 [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
                 print(word)
                 #print(word, baseline_guess)
@@ -204,89 +217,21 @@ def baseline_drs_wn(data):
                         correct_base_count += 1
         print()
         print("new sentence")
-
-
-    print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
-    print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
-
-def determining_the_gold_similarity_distance(data):
-
-    '''
-    If we want to use similarity, we need to know the (order of magnitude) similarity score
-    for the gold parse - so if all the labels are correct, what is the similarity score of
-    the sentence as a whole. This function calculates that by doing a triangular matrix calculation,
-    for every synset (in the drs), it does this
-    sim ... s1 ... s2... s3 ...
-    s1 .... 1 ... 0.5 ...0.7...
-    s2 ............1.....0.9...
-    s3 .................. 1...
-    ...
-    with list comprehension and the similarity function built into wordnet.
-    Then, it sums all the similarity scores (not including the similarity of s1/s1, s2/s2, etc.
-    And normalises it by dividing by drs length
-
-    And then it calculates some relevant stats over the collection of drs's. For now, that
-    looks like this:
-    stats on gold (using wu-palmer similarity... not sure why tbh):
-	mean 0.44161341864681675
-	median 0.38295454545454544
-	standard dev 0.2431369914565437
-	variance 0.0591155966145394
-	So the best gold parse still only has a mean similarity score of 0.23...
-
-    :param data:
-    :return:
-    '''
-    total_count = 0
-    statistics = []
-    for drs in data:
-        clauses_drs = drs[1:]
-        relevant_synsets = []
-        for clause in clauses_drs:  # this part gets the synset from the relevant words
-            if clause[1].islower():  # relevant entities are always all lowercase.
-                total_count += 1
-                clause_name = clause[1] + "." + clause[2].strip('"')
-                try:
-                    relevant_synsets.append(wn.synset(str(clause_name)))
-                except WordNetError: # this means that the gold parse is wrong! (nltk.corpus.reader.wordnet.WordNetError: no lemma 'state' with part of speech 'a')
-                    try:
-                        relevant_synsets.append(wn.synsets(clause[1])[0])    # select the first appropriate one
-                    except IndexError:
-                        # this word does not exist in wordnet
-                        pass
-
-        sum_of_similarity = 0   # this part calculates similarity
-        for i in range(0, len(relevant_synsets)-1):  # a 1-d array of words
-            for j in range(i+1, len(relevant_synsets)):
-                sum_of_similarity += relevant_synsets[i].wup_similarity(relevant_synsets[j])
-        statistics.append(sum_of_similarity/len(relevant_synsets))
-        #print("normalised similarity for gold parse", sum_of_similarity/len(relevant_synsets))
-
-    print("stats on gold")
-    print("\tmean", np.mean(statistics))
-    print("\tmedian", np.median(statistics))
-    print("\tstandard dev", np.std(statistics))
-    print("\tvariance", np.var(statistics))
-
-
-
-
-
-
-
-
+    #print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
+    #print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
 
 
 def main():
     download_nltk_packages()
-    data, drs_data = read_all_data()
-    drs, claused_drs = extract_drs_features(drs_data)
-    #baseline_drs_wn(claused_drs)
-    determining_the_gold_similarity_distance(claused_drs)
+    train = read_drs_data('../PMB/data/pmb-4.0.0/gold/train.txt')
+    dev = read_drs_data('../PMB/data/pmb-4.0.0/gold/dev.txt')
+    test = read_drs_data('../PMB/data/pmb-4.0.0/gold/test.txt')
 
-    #tokens, roles = extract_features(data)
-    #pos_tags = pos_tag(tokens)
-    #wn_annotations = lookup_wn(pos_tags, 1)
+    structured_drs, claused_drs = extract_drs_features(train + dev)
+    frequency_counts = calculate_frequency(claused_drs)
+    most_frequent = determine_highest(frequency_counts)
+
+    baseline_drs_wn(claused_drs[0:2])
 
 
 if __name__ == "__main__":
