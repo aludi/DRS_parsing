@@ -356,6 +356,8 @@ def test_similarity_matrix(data):
     correct_tags_too_low = 0
     correct_tags_not_present = 0
     same_score_but_lower_in_order = 0
+    keyerrors_word_vector = 0
+    total_word_vectors = 0
     tot = 0
     measure = "word_vectors" #performs about the same (or better!) and way faster
     if measure in ["hybrid", "word_vectors"]:
@@ -453,7 +455,7 @@ def test_similarity_matrix(data):
                         hyp = x.hypernyms() # get the hypernyms of x
                         trop = x.hyponyms() # get troponyms of x
                         #syn = x.lemma_names()
-                        m = 1
+                        m = 0
                         feat = []
                         for l in hyp:
                             feat.append(l)
@@ -463,50 +465,22 @@ def test_similarity_matrix(data):
                             feat.append(l)
 
                         for word in feat:
-
-                            #print(word)
-                            #print(x, y)
-
-
-                            m = 1
                             try:
 
-                                m *= pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
+                                m += pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
                                 # print(vec.similarity(rel, word.lemma_names()[0]))
                             except KeyError:
-                                m *= 1
+                                keyerrors_word_vector += 1
+                                m += 1
+                            total_word_vectors += 1
 
-                        d[x][y] = m
 
-                    elif measure == "hybrid":
-                        if x.pos() == y.pos():
-                            d[x][y] = x.wup_similarity(y)
+                        if len(feat) > 0:
+                            d[x][y] = m/len(feat)
                         else:
-                            hyp = x.hypernyms()  # get the hypernyms of x
-                            trop = x.hyponyms()  # get troponyms of x
-                            m = 1
-                            feat = []
-                            for l in hyp:
-                                feat.append(l)
-                            for l in trop:
-                                feat.append(l)
+                            d[x][y] = 0
 
-
-
-                            for word in feat:
-
-                                # print(word)
-                                # print(x, y)
-
-                                m = 1
-                                try:
-
-                                    m *= pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
-                                    # print(vec.similarity(rel, word.lemma_names()[0]))
-                                except KeyError:
-                                    m *= 1
-
-                            d[x][y] = m
+                   
 
 
 
@@ -621,11 +595,16 @@ def test_similarity_matrix(data):
     print(f"\t incorrect generation {correct_tags_not_present}")
     print(f"\t same score, unlucky {same_score_but_lower_in_order} out of {tot}")
 
+
     print("performance on matching similar-based tags to gold parse")
     print("\tmean", np.mean(statistics))
     print("\tmedian", np.median(statistics))
     print("\tstandard dev", np.std(statistics))
     print("\tvariance", np.var(statistics))
+
+    if total_word_vectors > 0:
+        print(f"\t keyerrors word vector {keyerrors_word_vector} out of {total_word_vectors} {keyerrors_word_vector/total_word_vectors}%")
+
 
 
 
