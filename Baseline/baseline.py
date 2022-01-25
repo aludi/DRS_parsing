@@ -7,14 +7,13 @@ from nltk.corpus import wordnet as wn
 
 
 def download_nltk_packages():
-    """ Downloads the nltk packages necessary for this project"""
+    """Downloads the NLTK packages necessary for this project."""
     nltk.download('wordnet', quiet=True)
 
 
 def read_drs_data(file):
-    """ Reads in the data from the DRS-clause structure dev file
+    """Reads in the data from the DRS-clause structure file provided
     and returns it as a list."""
-
     with open(file, encoding='utf8') as file:
         data = file.read()
         data = data.split('\n\n')
@@ -23,7 +22,7 @@ def read_drs_data(file):
 
 
 def extract_drs_features(data):
-    """ Puts the clause DRS in usable form. """
+    """Converts the DRS clause data into a more usable form."""
     structured_data = []
     claused_drs = []
     for item in data:
@@ -35,16 +34,16 @@ def extract_drs_features(data):
         for line in lines:
             clause = []
             line = line.split(' ')
-            if "%" in line[0]:       # useless phrase 'also', "ah!"
-                continue             # skip
-            temp[0].append(line[0])  # The first argument of a clause is always a variable for a DRS.
-            temp[1].append(line[1])  # The second argument determines the type of the clause.
-            temp[2].append(line[2])  # The third and fourth argument are always variables
-            if line[3] != '':        # or constants (constants are enclosed in double quotes).
+            if "%" in line[0]:          # useless phrase 'also', "ah!"
+                continue                # skip
+            temp[0].append(line[0])     # The first argument of a clause is always a variable for a DRS.
+            temp[1].append(line[1])     # The second argument determines the type of the clause.
+            temp[2].append(line[2])     # The third and fourth argument are always variables
+            if line[3] != '':           # or constants (constants are enclosed in double quotes).
                 temp[3].append(line[3])
-            temp[4].append(line[-2])  # add words
-            temp[5].append(line[-1])  # and index in sentence for bookkeeping
-            if line[3] != '':         # could be more efficient
+            temp[4].append(line[-2])    # add words
+            temp[5].append(line[-1])    # and index in sentence for bookkeeping
+            if line[3] != '':           # could be more efficient
                 clause = [line[0], line[1], line[2], line[3], line[-2], line[-1]]
             else:
                 clause = [line[0], line[1], line[2], line[-2], line[-1]]
@@ -55,7 +54,7 @@ def extract_drs_features(data):
 
 
 def pos_tag(tokens):
-    """ Conducts part-of-speech tagging on the extracted tokens from
+    """Conducts part-of-speech tagging on the extracted tokens from
     the data using NLTK."""
     pos_tags = []
     for sentence in tokens:
@@ -68,9 +67,8 @@ def lookup_wn(pos_tags, num_synsets):
     that is found. Returns a list of tuples with the word and the WordNet result."""
     # To-do: incorporate named entities as fixed WordNet results, for
     # example Celestial-Seasonings (organization) as company.n.01.
-    # regex against expcial characters
+    # Regex against expcial characters
     pattern = r'[^A-Za-z0-9]+'
-
     nouns = ['NN', 'NNP', 'NNS', 'PRP', 'WP', 'IN', "NNPS"]
     adjectives = ['JJ', 'JJR', 'JJS']
     adverbs = ['RB', 'RBR', 'RBS']
@@ -78,11 +76,9 @@ def lookup_wn(pos_tags, num_synsets):
     possible_tags = ['NN', 'NNP', 'NNS', "NNPS", 'PRP', 'WP', 'IN', 'JJ', 'JJR', 'JJS',
                      'RB', 'RBR', 'RBS', 'VB', 'VBD', 'VBG',
                      'VBN', 'VBP', 'VBZ', 'POS', 'DT', 'CD', 'CC', 'PDT', 'WDT', 'WRB', "$", "RP"]
-
     wn_annotations = []
 
     # hand-coded exceptions: 'time' in DRS is always time.n.08
-    #print(pos_tags)
     [[(a, b)]] = pos_tags
     b = re.sub(pattern, '', b)
     if a == 'time':
@@ -178,9 +174,8 @@ def baseline_drs_wn(data):
 
     for drs in data:
         clauses_drs = drs[1:]
-        print(drs[0])
-        tagged = pos_tag([drs[0].split(" ")])
-        print(tagged)
+        #print(drs[0])
+        tagged = pos_tag([drs[0].split(" ")[1:]])
         for clause in clauses_drs:
             relevant_tag = 0
             relevant_word = 0
@@ -188,17 +183,20 @@ def baseline_drs_wn(data):
                 word, tag = item
                 if clause[-2] == word:  # match drs word with pos tag
                     relevant_tag = tag
+                else:
+                    relevant_tag = 'NN' # otherwise just make it NN, since we can't find it
 
             if clause[1].islower(): # relevant entities are always all lowercase.
                 total_count += 1
                 clause_name = clause[1] + "." + clause[2].strip('"')
-                print(clause[1], relevant_tag)
+                #print(clause[1], relevant_tag)
                 [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
-                print(word)
+                #print(word)
                 #print(word, baseline_guess)
                 #print("\t", len(baseline_guess))
                 ### pos tag baseline
                 if len((baseline_guess)) > 0:
+                    #print(baseline_guess)
                     baseline_pos_guess = baseline_guess[0].name()  # always take the first one for baseline
                     if clause_name == baseline_pos_guess:
                         correct_pos_count += 1
@@ -208,17 +206,68 @@ def baseline_drs_wn(data):
                 list_of_possible_meanings = wn.synsets(clause[1])
                 #print("\t", clause[1])
                 #print(list_of_possible_meanings)
-                print("\t", len(list_of_possible_meanings) - len(baseline_guess), len(baseline_guess), len(list_of_possible_meanings))
+                #print("\t", len(list_of_possible_meanings) - len(baseline_guess), len(baseline_guess), len(list_of_possible_meanings))
 
 
                 if len(list_of_possible_meanings) > 0:
                     baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
                     if clause_name == baseline_guess:
                         correct_base_count += 1
-        print()
-        print("new sentence")
-    #print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
+        #print()
+        #print("-----new sentence------")
+    print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
     #print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
+
+
+def baseline_most_frequent(most_frequent, data):
+    '''Baseline system that gets most frequent synsets on the train and dev set, evaluates
+    on the test set. Does not use the hard-coded synsets, because it figures these out on
+    its own with the frequencies.
+
+    Baseline accuracy: 86.6% (?)'''
+    total_count = 0
+    correct_base_count = 0
+    correct_pos_count = 0
+    for drs in data:
+        #print(drs)
+        clauses_drs = drs[1:]
+        tagged = pos_tag([drs[0].split(" ")[1:]])
+        for clause in clauses_drs:
+            baseline_guess = ''
+            for item in tagged[0]:
+                word, tag = item
+                if clause[-2] == word:
+                    relevant_tag = tag
+            if clause[1].islower():
+                total_count += 1
+                clause_name = clause[1] + "." + clause[2].strip('"')
+                #print(clause[1], relevant_tag)
+                baseline_guess = ''
+                for token, synset in most_frequent:
+                    if clause[1] == token:
+                        #print(token, synset, clause[1])
+                        baseline_guess = clause[1] + '.' + synset.strip('"')
+                if baseline_guess == '':
+                    [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
+                    if len((baseline_guess)) > 0:
+                        #print(baseline_guess)
+                        baseline_pos_guess = baseline_guess[0].name()  # always take the first one for baseline
+                        if clause_name == baseline_pos_guess:
+                            correct_pos_count += 1
+
+                    ### non-pos tag baseline
+                    list_of_possible_meanings = wn.synsets(clause[1])
+                    # print("\t", clause[1])
+                    # print(list_of_possible_meanings)
+                    #print("\t", len(list_of_possible_meanings) - len(baseline_guess), len(baseline_guess),
+                          #len(list_of_possible_meanings))
+
+                    if len(list_of_possible_meanings) > 0:
+                        baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
+                if clause_name == baseline_guess:
+                    #print(clause_name, baseline_guess)
+                    correct_base_count += 1
+    print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
 
 
 def main():
@@ -228,10 +277,12 @@ def main():
     test = read_drs_data('../PMB/data/pmb-4.0.0/gold/test.txt')
 
     structured_drs, claused_drs = extract_drs_features(train + dev)
+    structured_drs_test, claused_drs_test = extract_drs_features(test)
     frequency_counts = calculate_frequency(claused_drs)
     most_frequent = determine_highest(frequency_counts)
 
-    baseline_drs_wn(claused_drs[0:2])
+    baseline_most_frequent(most_frequent, claused_drs_test)
+    baseline_drs_wn(claused_drs_test)
 
 
 if __name__ == "__main__":
