@@ -1,19 +1,20 @@
 #!/usr/bin/env python
 
 import re
+import statistics
 
 import nltk
 from nltk.corpus import wordnet as wn
 
 
 def download_nltk_packages():
-    """Downloads the NLTK packages necessary for this project."""
+    '''Downloads the NLTK packages necessary for this project.'''
     nltk.download('wordnet', quiet=True)
 
 
 def read_drs_data(file):
-    """Reads in the data from the DRS-clause structure file provided
-    and returns it as a list."""
+    '''Reads in the data from the DRS-clause structure file provided
+    and returns it as a list.'''
     with open(file, encoding='utf8') as file:
         data = file.read()
         data = data.split('\n\n')
@@ -22,7 +23,7 @@ def read_drs_data(file):
 
 
 def extract_drs_features(data):
-    """Converts the DRS clause data into a more usable form."""
+    '''Converts the DRS clause data into a more usable form.'''
     structured_data = []
     claused_drs = []
     for item in data:
@@ -54,8 +55,8 @@ def extract_drs_features(data):
 
 
 def pos_tag(tokens):
-    """Conducts part-of-speech tagging on the extracted tokens from
-    the data using NLTK."""
+    '''Conducts part-of-speech tagging on the extracted tokens from
+    the data using NLTK.'''
     pos_tags = []
     for sentence in tokens:
         pos_tags.append(nltk.pos_tag(sentence))
@@ -63,8 +64,8 @@ def pos_tag(tokens):
 
 
 def lookup_wn(pos_tags, num_synsets):
-    """Looks up the tokens on WordNet and annotates it with the first result
-    that is found. Returns a list of tuples with the word and the WordNet result."""
+    '''Looks up the tokens on WordNet and annotates it with the first result
+    that is found. Returns a list of tuples with the word and the WordNet result.'''
     # To-do: incorporate named entities as fixed WordNet results, for
     # example Celestial-Seasonings (organization) as company.n.01.
     # Regex against expcial characters
@@ -158,7 +159,7 @@ def determine_highest(frequency_counts):
 
 
 def baseline_drs_wn(data):
-    """ Primitive baseline system (count-based) for assigning word senses
+    '''Primitive baseline system (count-based) for assigning word senses
     to drs-es.
     We take the second item of the DRS. We assume it is a wordnet entry
     if it is in all lowercase (other relations are partially uppercase).
@@ -167,7 +168,7 @@ def baseline_drs_wn(data):
     And then we count the number of times that the meaning is correct.
 
     Current system baseline: 34% correct.
-    """
+    '''
     total_count = 0
     correct_base_count = 0
     correct_pos_count = 0
@@ -216,7 +217,7 @@ def baseline_drs_wn(data):
         #print()
         #print("-----new sentence------")
     print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
-    #print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
+    print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
 
 
 def baseline_most_frequent(most_frequent, data):
@@ -224,12 +225,14 @@ def baseline_most_frequent(most_frequent, data):
     on the test set. Does not use the hard-coded synsets, because it figures these out on
     its own with the frequencies.
 
-    Baseline accuracy: 86.6% (?)'''
+    Baseline accuracy: 86.6%'''
     total_count = 0
     correct_base_count = 0
     correct_pos_count = 0
+    total_pos_count = 0
+    sentence_correctness = []
     for drs in data:
-        #print(drs)
+        temp_correctness = [0, 0]
         clauses_drs = drs[1:]
         tagged = pos_tag([drs[0].split(" ")[1:]])
         for clause in clauses_drs:
@@ -248,6 +251,7 @@ def baseline_most_frequent(most_frequent, data):
                         #print(token, synset, clause[1])
                         baseline_guess = clause[1] + '.' + synset.strip('"')
                 if baseline_guess == '':
+                    total_pos_count += 1
                     [(word, baseline_guess)] = lookup_wn([[(clause[1], relevant_tag)]], "max")
                     if len((baseline_guess)) > 0:
                         #print(baseline_guess)
@@ -267,7 +271,35 @@ def baseline_most_frequent(most_frequent, data):
                 if clause_name == baseline_guess:
                     #print(clause_name, baseline_guess)
                     correct_base_count += 1
+                    temp_correctness[0] += 1
+                else:
+                    temp_correctness[1] += 1
+        sentence_correctness.append(temp_correctness)
+
+    mean_acc_sent = 0
+    correct = 0
+    incorrect = 0
+    total_correct = 0
+    avg_acc = []
+
+    for i in sentence_correctness:
+        print(i)
+        if i[1] == 0:
+            total_correct += 1
+        correct += i[0]
+        incorrect += i[1]
+        avg_acc.append(i[0]/(i[0]+i[1])*100)
+
+    print(statistics.median(avg_acc))
+    print(statistics.stdev(avg_acc))
+    print(statistics.variance(avg_acc))
+    print(max(avg_acc), min(avg_acc))
+    print(total_correct)
+    print(correct, incorrect)
+    print(incorrect/correct*100)
+
     print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
+    print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_pos_count)*100}")
 
 
 def main():
