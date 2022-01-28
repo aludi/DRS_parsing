@@ -174,8 +174,10 @@ def baseline_drs_wn(data):
     total_count = 0
     correct_base_count = 0
     correct_pos_count = 0
+    sentence_correctness = []
 
     for drs in data:
+        temp_correctness = [0, 0]
         clauses_drs = drs[1:]
         #print(drs[0])
         tagged = pos_tag([drs[0].split(" ")[1:]])
@@ -216,8 +218,35 @@ def baseline_drs_wn(data):
                     baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
                     if clause_name == baseline_guess:
                         correct_base_count += 1
+                        temp_correctness[0] += 1
+                    else:
+                        temp_correctness[1] += 1
+        sentence_correctness.append(temp_correctness)
         #print()
         #print("-----new sentence------")
+
+
+    mean_acc_sent = 0
+    correct = 0
+    incorrect = 0
+    total_correct = 0
+    avg_acc = []
+
+    for i in sentence_correctness:
+        if i[1] == 0:
+            total_correct += 1
+        correct += i[0]
+        incorrect += i[1]
+        avg_acc.append(i[0]/(i[0]+i[1])*100)
+    print(statistics.mean(avg_acc))
+    print(statistics.median(avg_acc))
+    print(statistics.stdev(avg_acc))
+    print(statistics.variance(avg_acc))
+    print(max(avg_acc), min(avg_acc))
+    print(total_correct)
+    print(correct, incorrect)
+    print(incorrect/correct*100)
+
     print(f"baseline correctness on drs: {(correct_base_count/total_count)*100}")
     print(f"baseline + pos-tagged correctness on drs: {(correct_pos_count/total_count)*100}")
 
@@ -285,7 +314,6 @@ def baseline_most_frequent(most_frequent, data):
     avg_acc = []
 
     for i in sentence_correctness:
-        print(i)
         if i[1] == 0:
             total_correct += 1
         correct += i[0]
@@ -319,7 +347,7 @@ def main():
     frequency_counts = calculate_frequency(claused_drs)
     most_frequent = determine_highest(frequency_counts)
 
-    baseline_most_frequent(most_frequent, claused_drs_test)
+    #baseline_most_frequent(most_frequent, claused_drs_test)
     baseline_drs_wn(claused_drs_test)
 
 
