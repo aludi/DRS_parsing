@@ -16,7 +16,13 @@ pip install -r requirements.txt
 ```
 
 <h2>Files</h2>
+
 File  | Explanation
 ------------- | -------------
-Content Cell  | Content Cell
-Content Cell  | Content Cell
+Baseline/baseline.py  | Contains the two baseline models.
+Models/improved_model.py  | Hybrid approach model.
+Models/model.py  |  Wu-Palmer similarity model.
+Models/similarity.py  |  Word-vector similarity model.
+pmb_to_semcor_format.py  |  Restructures the PMB file to semcor format.
+PMB/  |  The PMB data containing for our programs.
+
