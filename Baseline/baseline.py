@@ -5,6 +5,8 @@ import statistics
 
 import nltk
 from nltk.corpus import wordnet as wn
+import numpy as np
+import plotille as pl
 
 
 def download_nltk_packages():
@@ -289,6 +291,10 @@ def baseline_most_frequent(most_frequent, data):
         correct += i[0]
         incorrect += i[1]
         avg_acc.append(i[0]/(i[0]+i[1])*100)
+
+
+    #print(pl.hist(X=avg_acc, bins=25, lc=None))
+
 
     print(statistics.median(avg_acc))
     print(statistics.stdev(avg_acc))

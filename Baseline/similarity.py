@@ -41,7 +41,7 @@ def read_drs_data():
     """ Reads in the data from the DRS-clause structure dev file
     and returns it as a list."""
 
-    with open('../PMB/data/pmb-4.0.0/gold/dev.txt') as file:
+    with open('../PMB/data/pmb-4.0.0/gold/test.txt') as file:
         data = file.read()
         data = data.split('\n\n')
         data.pop(-1)
@@ -204,6 +204,8 @@ def baseline_drs_wn(data):
         #print()
         clauses_drs = drs[1:]
         tagged = pos_tag([drs[0].split(" ")])
+        sent_correct = 0
+
         for clause in clauses_drs:
             #print(clause)
             relevant_tag = 0
@@ -234,11 +236,14 @@ def baseline_drs_wn(data):
                 #print(list_of_possible_meanings)
                 print("\t", len(list_of_possible_meanings) - len(baseline_guess), len(baseline_guess), len(list_of_possible_meanings))
 
-
                 if len(list_of_possible_meanings) > 0:
                     baseline_guess = list_of_possible_meanings[0].name()  # always take the first one for baseline
                     if clause_name == baseline_guess:
                         correct_base_count += 1
+                        sent_correct += 1
+
+            
+
         print()
         print("new sentence")
 
@@ -310,7 +315,7 @@ def determining_the_gold_similarity_distance(data):
 
 
 
-def test_similarity_matrix(data):
+def test_similarity_matrix(data, word_vector_dataset):
     '''
 
     for now, on the first fifty drs' (otherwise its too slow):
@@ -359,12 +364,13 @@ def test_similarity_matrix(data):
     keyerrors_word_vector = 0
     total_word_vectors = 0
     tot = 0
-    measure = "word_vectors" #performs about the same (or better!) and way faster
+    measure = "path" #performs about the same (or better!) and way faster
     if measure in ["hybrid", "word_vectors"]:
-        pre_vectors = gensim.downloader.load('glove-wiki-gigaword-100') # added w2v for cross pos-tag comparison
+
+        pre_vectors = gensim.downloader.load(word_vector_dataset) # added w2v for cross pos-tag comparison
     print(f"load time: {round(time.time()-runtime_start, 2)} s")
-
-
+    total_accuracy = 0
+    total_lemmas = 0
     for drs in data:
         #print(drs[0])
         clauses_drs = drs[1:]
@@ -388,7 +394,6 @@ def test_similarity_matrix(data):
                     gold_tags.append(wn.synset(clause_name)) # should always work...?
                 except WordNetError:
                     print("whole clause ", clause)
-
                     print("clause ", clause[1])
                     print(wn.synsets(clause[1]))
                     try:
@@ -419,6 +424,7 @@ def test_similarity_matrix(data):
                         pass
 
 
+        #print(gold_tags)
         sentence = relevant_synsets
         # base test, only take c3 and c4:
         # len = number of words
@@ -430,6 +436,9 @@ def test_similarity_matrix(data):
             for j in range(i + 1, len(sentence)):
                 relevant_sims.append((i, j))
         d = defaultdict(dict)
+
+        skipped_list = [wn.synset('fourth_dimension.n.01'), wn.synset('event.n.01'), wn.synset('person.n.01'),
+                        wn.synset('entity.n.01')]
 
         for cal in relevant_sims:
             i, j = cal
@@ -447,40 +456,67 @@ def test_similarity_matrix(data):
                     elif measure == "path":
                         d[x][y] = x.wup_similarity(y)
                     elif measure == "word_vectors":
+                        if x not in skipped_list and y not in skipped_list:
+                            #if x.pos() == y.pos():  # only match similar tags
+                            #    d[x][y] = x.wup_similarity(y)
+                            #
+                            #else:
+                            hyp = x.hypernyms() # get the hypernyms of x
+                            trop = x.hyponyms() # get troponyms of x
+                            syn = x.lemma_names()
+                            m = 0
+                            feat = []
+                            len_ = 3
 
-                        #if x.pos() == y.pos():  # only match similar tags
-                        #    d[x][y] = x.wup_similarity(y)
-                        #
-                        #else:
-                        hyp = x.hypernyms() # get the hypernyms of x
-                        trop = x.hyponyms() # get troponyms of x
-                        #syn = x.lemma_names()
-                        m = 0
-                        feat = []
-                        for l in hyp:
-                            feat.append(l)
-                        for l in trop:
-                            feat.append(l)
-                        for l in trop:
-                            feat.append(l)
-
-                        for word in feat:
-                            try:
-
-                                m += pre_vectors.similarity(y.lemma_names()[0], word.lemma_names()[0])
-                                # print(vec.similarity(rel, word.lemma_names()[0]))
-                            except KeyError:
-                                keyerrors_word_vector += 1
-                                m += 1
-                            total_word_vectors += 1
+                            if len(hyp) > len_:
+                                for l in hyp[0:3]:
+                                    for term in l.lemma_names():
+                                        feat.append(term)
+                                        break
+                            else:
+                                for l in hyp:
+                                    for term in l.lemma_names():
+                                        feat.append(term)
+                                        break
 
 
-                        if len(feat) > 0:
-                            d[x][y] = m/len(feat)
-                        else:
-                            d[x][y] = 0
+                            i = 0
+                            for l in syn:
 
-                   
+                                feat.append(l)
+                                if i < 3:
+                                    break
+                                i += 1
+
+
+                            #feat = [x.lemma_names()[0]]
+                            syn1 = [y.lemma_names()[0]]
+
+
+                            for word in feat:
+                                for sym1 in syn1:
+                                    try:
+
+                                        m += pre_vectors.similarity(sym1, word)
+                                        # print(vec.similarity(rel, word.lemma_names()[0]))
+
+                                    except KeyError:
+                                        keyerrors_word_vector += 1
+                                        m += 0
+                                total_word_vectors += 1
+
+
+
+                            if len(feat) > 0:
+                                d[x][y] = m /(len(feat))
+                                #print(m, m / (len(feat)), y, x)
+
+                            else:
+                                d[x][y] = -1
+                                #print(m, 0, y, x)
+
+
+
 
 
 
@@ -503,8 +539,7 @@ def test_similarity_matrix(data):
             skip_counter += 1
             continue
 
-        skipped_list = [wn.synset('fourth_dimension.n.01'), wn.synset('event.n.01'), wn.synset('person.n.01'),
-                        wn.synset('entity.n.01')]
+
         with np.nditer(sum_similarity, flags=['multi_index'], op_flags=['readwrite']) as it:
             for x in it:
                 r = it.multi_index
@@ -540,10 +575,22 @@ def test_similarity_matrix(data):
         #for x in sum_similarity_dict.keys():
         #    print(x, sum_similarity_dict[x])
 
-        accuracy = calculate_accuracy(gold_tags, max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
+        entry, best_m = max(sum_similarity_dict.items(), key=lambda k: k[1])
+        possible_parses = []
+        #print("\t", gold_tags)
+
+        for k, v in sum_similarity_dict.items():
+            if v == best_m:
+                possible_parses.append(v)
+                #print("parses", v, k)
+        accuracy, count_accuracy = calculate_accuracy(gold_tags, max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
 
         y = set(max(sum_similarity_dict.items(), key=lambda k: k[1])[0])
         x = set(gold_tags)
+
+
+
+
 
         #print("GOLD", gold_tags)
         #print("best", max(sum_similarity_dict.items(), key=lambda k: k[1]))     # todo add a progress bar
@@ -581,6 +628,8 @@ def test_similarity_matrix(data):
                 #else:
                 #    print(item, sum_similarity_dict[item])
         #print()
+        total_accuracy += count_accuracy
+        total_lemmas += len(gold_tags)
         tot += 1
 
         statistics.append(accuracy)    # not the best
@@ -597,6 +646,7 @@ def test_similarity_matrix(data):
 
 
     print("performance on matching similar-based tags to gold parse")
+    print("\ttotal accuracy", total_accuracy/total_lemmas)
     print("\tmean", np.mean(statistics))
     print("\tmedian", np.median(statistics))
     print("\tstandard dev", np.std(statistics))
@@ -614,12 +664,12 @@ def calculate_accuracy(gold, found):
         for i in range(0, len(gold)):
             if gold[i] == found[i]:
                 count += 1
-        return count/len(gold)
+        return count/len(gold), count
     else:
         print("WRONG SIZE", "gold length ", len(gold), "found length ", len(found))
         print("GOLD", gold)
         print("best", found)  # todo add a progress bar
-        return 0
+        return 0, 0
 
 
 
@@ -662,24 +712,35 @@ def test():
 def test_2():
     #wn_vectors = gensim.models.Word2Vec.load_word2vec_format('wn2vec.txt')
     #wn_vectors = gensim.models.KeyedVectors.load_word2vec_format('wn2vec.txt')
-    vec = gensim.downloader.load('glove-wiki-gigaword-50')    #print(wn_vectors.similarity('woman', 'man'))
+    vec = gensim.downloader.load('fasttext-wiki-news-subwords-300')    #print(wn_vectors.similarity('woman', 'man'))
     meanings = wn.synsets(("cat"))
-    sim_words = ['jump', 'rust', 'salt', 'beautiful', 'dog']
+    sim_words = ['jump']
     for rel in sim_words:
         for cat in meanings:
             print(cat)
             print("\t", cat.hypernyms())
-            m = 1
-            for word in cat.hypernyms():
+            print("\t", cat.lemma_names())
 
-                #print(word)
-                #print(word.lemma_names())
+            m = 0
+            for word in cat.lemma_names():
+
+                print(word)
 
                 try:
-                    m *= vec.similarity(rel, word.lemma_names()[0])
-                    #print(vec.similarity(rel, word.lemma_names()[0]))
+                    m += vec.similarity(rel, word)
+                    print(vec.similarity(rel, word))
                 except KeyError:
-                    m *= 1
+                    m += 0
+            for word in cat.hypernyms():
+
+                print(word)
+                print(word.lemma_names())
+
+                try:
+                    m += vec.similarity(rel, word.lemma_names()[0])
+                    print(vec.similarity(rel, word.lemma_names()[0]))
+                except KeyError:
+                    m += 0
             print(cat, rel, m)
 
     '''print(vec.most_similar("cat"))
@@ -716,7 +777,10 @@ def main():
     data, drs_data = read_all_data()
     drs, claused_drs = extract_drs_features(drs_data)
     #test_2()
-    test_similarity_matrix(claused_drs)
+    #for dataset in ['glove-twitter-100', 'glove-twitter-200', 'glove-twitter-25', 'glove-twitter-50', 'fasttext-wiki-news-subwords-300', 'glove-wiki-gigaword-100','word2vec-google-news-300']:
+    #    print(dataset)
+    dataset = 'glove-twitter-200'
+    test_similarity_matrix(claused_drs, dataset)
     #baseline_drs_wn(claused_drs)
     #determining_the_gold_similarity_distance(claused_drs)
 
