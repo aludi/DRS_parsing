@@ -16,7 +16,7 @@ The required dependencies can be installed with:
 pip install -r requirements.txt
 ```
 
-<h2>Files</h2>
+<h2>Files explanation</h2>
 
 File  | Explanation
 ------------- | -------------
@@ -27,3 +27,12 @@ Models/similarity.py  |  Word-vector similarity model.
 pmb_to_semcor_format.py  |  Restructures the PMB file to semcor format.
 PMB/  |  The PMB data containing for our programs.
 
+<h2>Notable results</h2>
+
+Model  | File  |  Accuracy (%)
+------------- | ------------- | -------------
+1st sense baseline  |  Baseline/baseline.py  |  33.98%
+Frequency baseline  |  Baseline/baseline.py  |  86.62%
+WUP similarity model  |  Models/model.py  |  69.78%
+Word vector similarity model  |  Models/similarity.py  |  70.17%
+Hybrid model  |  Models/improved_model.py  |  83.14%
