@@ -11,6 +11,7 @@ Our third and last model uses a hybrid approach by relying on frequency for mono
 
 <h2>Installation of dependencies</h2>
 The required dependencies can be installed with:
+
 ```
 pip install -r requirements.txt
 ```
